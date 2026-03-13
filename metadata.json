@@ -1,0 +1,5 @@
+{
+  "name": "Fontez",
+  "description": "An AI-powered font generator that creates downloadable fonts from text prompts.",
+  "requestFramePermissions": []
+}
