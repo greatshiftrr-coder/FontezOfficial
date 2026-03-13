@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 import opentype from 'opentype.js';
-import { Loader2, Download, Type as TypeIcon, Sparkles, Wand2, RotateCcw, Bookmark, Trash2 } from 'lucide-react';
+import { Loader2, Download, Type as TypeIcon, Sparkles, Wand2, RotateCcw, Bookmark, Trash2, ZoomIn, ZoomOut, Palette, Fan } from 'lucide-react';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -13,13 +13,26 @@ interface SavedFont {
   glyphData: any[];
 }
 
+const textEffects = [
+  { id: 'none', label: 'Normal', className: 'text-zinc-100' },
+  { id: 'gradient', label: 'Gradient', className: 'bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-red-500' },
+  { id: 'metallic', label: 'Metallic', className: 'bg-clip-text text-transparent bg-gradient-to-b from-gray-300 via-zinc-100 to-gray-500 drop-shadow-md' },
+  { id: 'neon', label: 'Neon', className: 'text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.8)]' },
+  { id: 'outline', label: 'Outline', className: 'text-transparent [-webkit-text-stroke:1px_#f4f4f5]' },
+  { id: 'gold', label: 'Gold', className: 'bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-yellow-500 to-yellow-700 drop-shadow-sm' },
+  { id: 'hologram', label: 'Hologram', className: 'text-cyan-300 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)] opacity-90' },
+];
+
 export default function App() {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
   const [generatedFontUrl, setGeneratedFontUrl] = useState<string | null>(null);
   const [fontName, setFontName] = useState('Fontez-Generated');
   const [uniqueFontFamily, setUniqueFontFamily] = useState('GeneratedFont');
-  const [previewText, setPreviewText] = useState('The Quick Brown Fox Jumps Over The Lazy Dog 0123456789');
+  const [previewText, setPreviewText] = useState('The Quick Brown Fox Jumps Over The Lazy Dog. 0123456789 !?,');
+  const [previewZoom, setPreviewZoom] = useState(4);
+  const [textEffect, setTextEffect] = useState('none');
   const [error, setError] = useState<string | null>(null);
   const [rawGlyphs, setRawGlyphs] = useState<any[]>([]);
   const [savedFonts, setSavedFonts] = useState<SavedFont[]>([]);
@@ -37,16 +50,24 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let interval: number;
+    if (isGenerating) {
+      setLoadingStep(0);
+      interval = window.setInterval(() => {
+        setLoadingStep(prev => (prev < 3 ? prev + 1 : prev));
+      }, 4000);
+    }
+    return () => clearInterval(interval);
+  }, [isGenerating]);
+
+  useEffect(() => {
     // Cleanup object URL on unmount
     return () => {
-      if (generatedFontUrl) {
-        URL.revokeObjectURL(generatedFontUrl);
-      }
       if (styleRef.current) {
         styleRef.current.remove();
       }
     };
-  }, [generatedFontUrl]);
+  }, []);
 
   const applyFont = (glyphData: any[], name: string) => {
     // Create opentype.js font
@@ -97,6 +118,20 @@ export default function App() {
         path: path
       });
       glyphs.push(glyph);
+
+      // Map lowercase to uppercase if it's an uppercase letter and lowercase wasn't generated
+      if (data.character >= 'A' && data.character <= 'Z') {
+        const lowerChar = data.character.toLowerCase();
+        if (!glyphData.some(g => g.character === lowerChar)) {
+          const lowerGlyph = new opentype.Glyph({
+            name: lowerChar,
+            unicode: lowerChar.charCodeAt(0),
+            advanceWidth: data.advanceWidth || 600,
+            path: path
+          });
+          glyphs.push(lowerGlyph);
+        }
+      }
     }
 
     const uniqueFamily = `GeneratedFont_${Date.now()}`;
@@ -141,24 +176,60 @@ export default function App() {
     setRawGlyphs([]);
 
     try {
+      if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'undefined') {
+        throw new Error("API key is missing. If you are the owner, please ensure GEMINI_API_KEY is set in your GitHub repository secrets.");
+      }
+
+      const cacheKey = `fontez_cache_${activePrompt.toLowerCase().trim()}`;
+      const cachedData = localStorage.getItem(cacheKey);
+      
+      if (cachedData) {
+        const glyphData = JSON.parse(cachedData);
+        setRawGlyphs(glyphData);
+        const newFontName = `Fontez-${activePrompt.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'Custom'}`;
+        setFontName(newFontName);
+        applyFont(glyphData, newFontName);
+        setIsGenerating(false);
+        return;
+      }
+
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `You are an expert typography designer. The user wants a font that looks like: '${activePrompt}'.
-Generate the path commands for the uppercase letters A-Z, lowercase letters a-z, and numbers 0-9.
-The coordinate system has the origin (0,0) at the bottom-left of the baseline. The Y-axis goes UP.
-The ascender is at y=800, and the baseline is at y=0.
-Return an array of objects, one for each character (A-Z, a-z, 0-9).
+        model: 'gemini-3.1-pro-preview',
+        contents: `You are a world-class typographer and master SVG vector artist. The user wants a custom font with this exact style/theme: '${activePrompt}'.
+
+Generate the precise SVG path commands for the uppercase letters A-Z, lowercase letters a-z, numbers 0-9, and common punctuation (!, ?, ., ,).
+
+### COORDINATE SYSTEM & METRICS
+- Origin (0,0) is at the bottom-left of the baseline. The Y-axis goes UP.
+- Baseline is at y=0. Cap height is at y=800.
+- Advance width should vary by character (e.g., 'I' is narrow ~300, 'W' is wide ~900, standard is ~600).
+
+### TYPOGRAPHY & STYLE RULES
+1. HEAVILY incorporate the requested style ('${activePrompt}') into the geometry.
+2. Maintain consistent stroke thickness (stem width) across all characters unless the style dictates otherwise.
+3. Ensure all characters share the same visual DNA (serifs, curves, angles, contrast).
+4. Do NOT just output generic sans-serif letters. The font MUST visually reflect the prompt.
+
+### CRITICAL SVG PATH RULES (WINDING & COUNTERS)
+- Fonts are FILLED shapes. You must draw the OUTLINE of the letter.
+- Characters with holes (A, B, D, O, P, Q, R, a, b, d, e, g, o, p, q, 0, 4, 6, 8, 9, ?, !) MUST have "counters" (inner paths) to punch out the hole.
+- To create a hole, draw the outer path in one direction (e.g., clockwise), then start a new subpath with 'M' and draw the inner path in the OPPOSITE direction (e.g., counter-clockwise).
+- Example of an 'O' with a hole: "M 100 0 C 100 800 500 800 500 0 Z M 200 100 C 400 100 400 700 200 700 Z" (Outer path, then inner path).
+- Ensure all paths form closed loops (end with Z).
+- Use absolute commands (M, L, C, Q, Z).
+- Keep paths efficient but detailed enough for the style (up to 25 commands per character for complex styles).
+
+Return an array of objects, one for each character (A-Z, a-z, 0-9, !, ?, ., ,).
 Each object must have:
-- character: The letter or number (e.g., 'A', 'b', '3').
+- character: The letter, number, or symbol (e.g., 'A', 'a', '3', '!').
 - advanceWidth: The width of the character (e.g., 600).
-- path: A single string containing SVG-like path commands (M, L, Q, C, Z) with absolute coordinates. Example: "M 0 0 L 300 800 L 600 0 Z".
-CRITICAL: Fonts are FILLED shapes, not strokes. You MUST draw the OUTLINE of the letter, not its skeleton. For example, an 'I' should be a rectangle (M 0 0 L 0 800 L 200 800 L 200 0 Z), not a single line.
-Ensure the paths form closed loops and are visually distinct and legible. Keep the paths relatively simple (under 20 commands per character) to ensure fast generation.`,
+- path: A single string containing SVG-like path commands (M, L, Q, C, Z) with absolute coordinates. Example: "M 0 0 L 300 800 L 600 0 Z".`,
         config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.ARRAY,
-            description: "An array of glyph definitions for the uppercase letters A-Z, lowercase letters a-z, and numbers 0-9.",
+            description: "An array of glyph definitions for the uppercase letters A-Z, lowercase letters a-z, numbers 0-9, and punctuation (!, ?, ., ,).",
             items: {
               type: Type.OBJECT,
               properties: {
@@ -176,6 +247,13 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
       if (!jsonStr) throw new Error("Failed to generate font data.");
       
       const glyphData = JSON.parse(jsonStr);
+      
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(glyphData));
+      } catch (e) {
+        console.warn('Failed to cache font data', e);
+      }
+
       setRawGlyphs(glyphData);
       
       const newFontName = `Fontez-${activePrompt.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10) || 'Custom'}`;
@@ -185,7 +263,14 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "An error occurred while generating the font.");
+      let errorMessage = err.message || "An error occurred while generating the font.";
+      
+      // Handle common network/adblocker errors
+      if (errorMessage.toLowerCase().includes('network') || errorMessage.toLowerCase().includes('fetch')) {
+        errorMessage = "Network error: The connection timed out or was blocked. If you are using an ad blocker (like uBlock Origin or Brave Shields), try disabling it for this site. The Gemini API might be blocked on your network.";
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -293,11 +378,19 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
               <Wand2 className="w-5 h-5" />
             </button>
           </div>
-          {isGenerating && (
-            <p className="text-emerald-400/80 text-sm mt-2 animate-pulse">
-              Generating 62 characters (A-Z, a-z, 0-9)... This usually takes 15-30 seconds.
-            </p>
-          )}
+          
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+            <span className="text-sm text-zinc-500 mr-2">Styles:</span>
+            {['Cyberpunk', 'Vintage Serif', 'Bubblegum', 'Gothic', 'Minimalist Sans', 'Sci-Fi', 'Art Deco'].map((style) => (
+              <button
+                key={style}
+                onClick={() => setPrompt(style)}
+                className="text-xs px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-full text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                {style}
+              </button>
+            ))}
+          </div>
           {error && (
             <p className="text-red-400 text-sm mt-2">{error}</p>
           )}
@@ -328,11 +421,45 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between bg-zinc-950/50 p-3 rounded-xl mb-4">
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <ZoomOut className="w-4 h-4 text-zinc-500" />
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="10" 
+                    step="0.5"
+                    value={previewZoom} 
+                    onChange={(e) => setPreviewZoom(parseFloat(e.target.value))}
+                    className="flex-1 sm:w-32 accent-emerald-500"
+                  />
+                  <ZoomIn className="w-4 h-4 text-zinc-500" />
+                  <span className="text-xs text-zinc-400 w-8">{previewZoom}x</span>
+                </div>
+                
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto scrollbar-none [&::-webkit-scrollbar]:hidden">
+                  <Palette className="w-4 h-4 text-zinc-500 flex-shrink-0" />
+                  {textEffects.map(effect => (
+                    <button
+                      key={effect.id}
+                      onClick={() => setTextEffect(effect.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                        textEffect === effect.id 
+                          ? 'bg-zinc-800 text-zinc-100' 
+                          : 'bg-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                      }`}
+                    >
+                      {effect.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex items-center justify-between text-sm text-zinc-500 mb-2">
                 <div className="flex items-center gap-4">
                   <span>Try typing below (A-Z, a-z, 0-9)</span>
                   <button
-                    onClick={() => setPreviewText('The Quick Brown Fox Jumps Over The Lazy Dog 0123456789')}
+                    onClick={() => setPreviewText('The Quick Brown Fox Jumps Over The Lazy Dog. 0123456789 !?,')}
                     className="flex items-center gap-1.5 hover:text-zinc-300 transition-colors"
                     title="Reset text"
                   >
@@ -345,10 +472,10 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
               <textarea
                 value={previewText}
                 onChange={(e) => setPreviewText(e.target.value)}
-                className="w-full bg-transparent border-none resize-none focus:outline-none text-zinc-100"
+                className={`w-full bg-transparent border-none resize-none focus:outline-none caret-zinc-100 ${textEffects.find(e => e.id === textEffect)?.className || 'text-zinc-100'}`}
                 style={{
                   fontFamily: `'${uniqueFontFamily}', sans-serif`,
-                  fontSize: '4rem',
+                  fontSize: `${previewZoom}rem`,
                   lineHeight: '1.2',
                   minHeight: '200px'
                 }}
@@ -427,6 +554,23 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
               ))}
             </div>
           </section>
+        )}
+
+        {/* Loading Overlay */}
+        {isGenerating && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-zinc-950/90 backdrop-blur-sm animate-in fade-in duration-300">
+            <Fan className="w-20 h-20 text-emerald-500 animate-spin" />
+            <h2 className="mt-6 text-3xl font-bold text-emerald-500 tracking-widest uppercase animate-pulse">Loading</h2>
+            <div className="flex flex-col items-center justify-center gap-2 mt-4 max-w-md text-center">
+              <p className="text-emerald-400 font-medium text-sm">
+                {loadingStep === 0 && "Analyzing typographic style and geometry..."}
+                {loadingStep === 1 && "Generating precise SVG paths for 66 characters..."}
+                {loadingStep === 2 && "Punching out counters and applying winding rules..."}
+                {loadingStep >= 3 && "Compiling TrueType font file... almost done!"}
+              </p>
+              <p className="text-emerald-500/60 text-xs mt-2">This process usually takes 5-10 seconds.</p>
+            </div>
+          </div>
         )}
       </main>
     </div>
