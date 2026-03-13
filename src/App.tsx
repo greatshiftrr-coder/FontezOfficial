@@ -238,12 +238,10 @@ Ensure the paths form closed loops and are visually distinct and legible. Keep t
       {/* Header */}
       <header className="border-b border-zinc-800/50 bg-zinc-950/50 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
-              <TypeIcon className="w-5 h-5 text-zinc-950" />
-            </div>
+          <a href={import.meta.env.BASE_URL} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Fontez Logo" className="w-9 h-9 rounded-xl shadow-lg shadow-emerald-500/20" />
             <span className="text-xl font-bold tracking-tight">Fontez</span>
-          </div>
+          </a>
           <div className="flex items-center gap-4 text-sm text-zinc-400">
             {/* Removed GitHub link */}
           </div>

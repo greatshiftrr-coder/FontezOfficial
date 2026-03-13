@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="emerald-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="50%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="15" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#09090b" />
+  
+  <!-- Stylized F -->
+  <path d="M180 140 h160 v50 h-100 v60 h80 v50 h-80 v100 h-60 z" fill="url(#emerald-grad)" />
+  
+  <!-- Sparkles / Magic -->
+  <path d="M340 120 l15 -35 l35 -15 l-35 -15 l-15 -35 l-15 35 l-35 15 l35 15 z" fill="#a7f3d0" filter="url(#glow)" />
+  <path d="M380 220 l10 -25 l25 -10 l-25 -10 l-10 -25 l-10 25 l-25 10 l25 10 z" fill="#6ee7b7" filter="url(#glow)" />
+  <path d="M140 380 l8 -20 l20 -8 l-20 -8 l-8 -20 l-8 20 l-20 8 l20 8 z" fill="#34d399" filter="url(#glow)" />
+</svg>
