@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import opentype from 'opentype.js';
 import { Loader2, Download, Type as TypeIcon, Sparkles, Wand2, RotateCcw, Bookmark, Trash2, ZoomIn, ZoomOut, Palette, Fan } from 'lucide-react';
 
@@ -194,7 +194,7 @@ export default function App() {
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: `You are a world-class typographer and master SVG vector artist. The user wants a custom font with this exact style/theme: '${activePrompt}'.
 
 Generate the precise SVG path commands for the uppercase letters A-Z, lowercase letters a-z, numbers 0-9, and common punctuation (!, ?, ., ,).
@@ -225,7 +225,6 @@ Each object must have:
 - advanceWidth: The width of the character (e.g., 600).
 - path: A single string containing SVG-like path commands (M, L, Q, C, Z) with absolute coordinates. Example: "M 0 0 L 300 800 L 600 0 Z".`,
         config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.ARRAY,
